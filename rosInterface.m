@@ -16,6 +16,8 @@ publisher_string = ['rosrun rotors_gazebo waypoint_publisher',...
                     ' __ns:=pelican'];
 system(publisher_string);
 %}
+
+
 % Publisher using Matlab node
 pubTrajectory = rospublisher('/pelican/command/trajectory','trajectory_msgs/MultiDOFJointTrajectory','DataFormat','struct');
 pose_ref_msg = rosmessage(pubTrajectory);
