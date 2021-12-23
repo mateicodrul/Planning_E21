@@ -67,12 +67,12 @@ image_left = reshape(image_left_msg.Data, image_left_msg.Width, image_left_msg.H
 image_right = reshape(image_right_msg.Data, image_right_msg.Width, image_right_msg.Height).';
 PointsC = readXYZ(pointcloud_msg);
 PointsC(any(isnan(PointsC), 2), :) = [];
+PointsB = applyHomTransform(PointsC, params.HB_C);
 poseQuat_ = [pose_msg.Position.X, pose_msg.Position.Y, pose_msg.Position.Z,...
              pose_msg.Orientation.W, pose_msg.Orientation.X, pose_msg.Orientation.Y, pose_msg.Orientation.Z].';
 pose = poseQuat2Eul(poseQuat_);
-
 poseQuat = poseEul2Quat(pose);
-insertPointCloud(occMap, poseQuat, PointsC, params.camMaxRange + 1/params.mapResolution);
+insertPointCloud(occMap, poseQuat, PointsB, params.camMaxRange + 1/params.mapResolution);
 
 figure
 subplot(1,2,1)
@@ -80,7 +80,7 @@ show(occMap)
 colormap turbo
 view(-45,10)
 subplot(1,2,2)
-pcshow(PointsC, 'BackgroundColor', [1 1 1])
+pcshow(PointsB, 'BackgroundColor', [1 1 1])
 
 figure
 subplot(1,2,1)

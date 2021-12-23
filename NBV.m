@@ -1,13 +1,4 @@
-setupSim;
 main;
-clearvars -except params occMap Points color
-
-tol_idx = 1;
-tol_close = 0.4;
-
-% Pose at the start of exploration
-pose = [0 -22/2 15/2 0 0 pi/2].';
-poseQuat = poseEul2Quat(pose);
 
 %%% NBV planning %%%
 % Create RRT tree object
@@ -191,6 +182,15 @@ while rrtInitializationCounter >= 0
     % Vehicle dynamics should be included here, instead of pure assignment
     posePrev = pose;
     pose = rrt_tree.bestEdgeState;
+    % Publish pose reference message and wait for the drone to move 
+    gazeboMoveDrone(pubTrajectory, pose)
+    % Decode pose messages to get initial pose of the drone in the world frame
+    pose_msg = subPose.LatestMessage;
+    poseQuat = [pose_msg.Position.X, pose_msg.Position.Y, pose_msg.Position.Z,...
+                 pose_msg.Orientation.W, pose_msg.Orientation.X, pose_msg.Orientation.Y, pose_msg.Orientation.Z].';
+    pose = poseQuat2Eul(poseQuat);
+    % Pose with orientation part in quaternion form
+    poseQuat = poseEul2Quat(pose);
     
     for nodeInBestBranchIdx = 1:size(rrt_tree.bestBranchStates, 1)-1
         state = rrt_tree.bestBranchStates(nodeInBestBranchIdx, :).';
@@ -213,42 +213,40 @@ while rrtInitializationCounter >= 0
     end
     hold off
     
-    % Rotate in place with 90-degree steps
-    for i = 1:4
-        % Get scan of visible environment from camera
-        %tic
-        PointsC_visible = depthCameraSim(pose, Points, params, tol_idx, tol_close);
-        %toc
-        % Add visible pointcloud in sensor coordinates to the occupancy map. Return
-        % if there are no points to be added
-        if ~isempty(PointsC_visible)
-            % Pose with orientation part in quaternion form
-            poseQuat = poseEul2Quat(pose);
-            insertPointCloud(occMap, poseQuat, PointsC_visible, params.camMaxRange);
-            
-            %{
-            % Set all the voxels within the sensor range and FOV to free if no
-            % obstacles exist along the corresponding rays
-            tic
-            Points_uf = findUnmappedFree(occMap, pose, params);
-            toc
-            if ~isempty(Points_uf)
-                tic
-                setOccupancy(occMap, Points_uf, 0);
-                toc
-            else
-                disp('No unmapped voxels to be made fee');
-            end
-            %}
-        else
-            disp('No visible points to be added to the voxel map');
-        end
+    % Get scan in base frame of visible environment from Gazebo camera
+    %tic
+    PointsB = gazeboGetCameraPoints(subPointcloud, params);
+    %toc
+    % Add visible pointcloud in sensor coordinates to the occupancy map. Return
+    % if there are no points to be added
+    if ~isempty(PointsB)
+        % Pose with orientation part in quaternion form
+        poseQuat = poseEul2Quat(pose);
+        insertPointCloud(occMap, poseQuat, PointsB, params.camMaxRange);
         
-        % Plot explored map
-        showExploredMap(PointsC_visible, occMap, pose, posePrev)
-        pose(6) = pose(6) + pi/2;
+        %{
+        % Set all the voxels within the sensor range and FOV to free if no
+        % obstacles exist along the corresponding rays
+        tic
+        Points_uf = findUnmappedFree(occMap, pose, params);
+        toc
+        if ~isempty(Points_uf)
+            tic
+            setOccupancy(occMap, Points_uf, 0);
+            toc
+        else
+            disp('No unmapped voxels to be made fee');
+        end
+        %}
+    else
+        disp('No visible points to be added to the voxel map');
     end
-    pose(6) = pose(6) + pi/2;
+    
+    % Plot explored map
+    %showExploredMap(PointsB, occMap, pose, posePrev)
 
 % Back to top to start new plan
 end
+
+% Shutdown ROS node
+rosshutdown
