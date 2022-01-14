@@ -1,15 +1,11 @@
-function in_range_and_fov_idx = inRangeAndFOV(azim, elev, r, params, range_select)
-    azim_in_fov_idx = azim >= -params.fovHorizontal/2 & azim <= params.fovHorizontal/2;
-    elev_in_fov_idx = elev >= -params.fovVertical/2 & elev <= params.fovVertical/2;
-    if strcmp(range_select, 'gain')
-        max_range = params.gainRange;
-        min_range = 10e-3;
-    elseif strcmp(range_select, 'camera')
-        max_range = params.camMaxRange;
-        min_range = 10e-3;
-    else
-        disp('inRangeAndFOV -- unspecified range case. Choose between camera and gain');
-    end
-    r_in_range_idx = r > min_range & r <= max_range;
-    in_range_and_fov_idx = azim_in_fov_idx & elev_in_fov_idx & r_in_range_idx;
+function in_range_and_fov_idx = inRangeAndFOV(voxelsC, params)
+    in_range_idx = vecnorm(voxelsC.') < params.gainRange & vecnorm(voxelsC.') > 0.2;
+    q_t = params.K * voxelsC.';
+    q_t_ = q_t ./ q_t(end,:);
+    q = q_t_(1:2,:);
+    in_fov_x_idx = q(1,:) >= 1 & q(1,:) <= params.imgWidth;
+    in_fov_y_idx = q(2,:) >= 1 & q(2,:) <= params.imgHeight;
+    in_fov_z_idx = q_t(3,:) > 0;
+    in_range_and_fov_idx = (in_range_idx & in_fov_x_idx & in_fov_y_idx & in_fov_z_idx).';
 end
+

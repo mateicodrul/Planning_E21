@@ -1,4 +1,6 @@
-function gain = computeGain(occMap, state, params)
+function gain = computeGainDebug(occMap, state, params)
+    %%
+    state = [5 1 1 0 0 0].';
     % Initilaize gain to 0
     gain = 0;
     % Get the camera state corresponding to the node for whcih we are
@@ -48,8 +50,8 @@ function gain = computeGain(occMap, state, params)
         end
     end
     % Remove voxels for which occupancy is still 2 after calling rayIntersect
-    % voxels(isOccupied == 2,:) = [];
-    % intersections(~any(intersections, 2), : ) = [];
+    voxels(isOccupied == 2,:) = [];
+    intersections(~any(intersections, 2), : ) = [];
     % In practice, we only care about the occupancy values
     isOccupied(isOccupied == 2) = [];
     % Keep unique intersections
@@ -66,5 +68,14 @@ function gain = computeGain(occMap, state, params)
     gain = gain + params.giUnmapped * sum(isOccupied == -1);
 
     % Scale gain with volume
-    gain = gain * (1/params.mapResolution)^3;    
+    gain = gain * (1/params.mapResolution)^3;
+
+    
+    figure(1)
+    scatter3(voxels(:,1), voxels(:,2), voxels(:,3))
+    hold on
+    %scatter3(intersections(:,1), intersections(:, 2), intersections(:, 3), 'filled')
+    %scatter3(voxels(isOccupied == 0,1), voxels(isOccupied == 0,2), voxels(isOccupied == 0,3), 'filled')
+    %hold off
+    
 end

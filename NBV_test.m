@@ -1,11 +1,10 @@
-%%% NBV planning %%%
+main;
 
+%%% NBV planning %%%
 % Create RRT tree object
 rrt_tree = tree(struct('state', zeros(6,1), 'gain', 0, 'distance', 0));
 % Counter for the number of plans executed
 rrtInitializationCounter = 0;
-% Flag indicating that we must return to previous pose
-backtoPosePrev = false;
 % Inifnite loop for NBV planning
 while rrtInitializationCounter >= 0
     % After the first run
@@ -64,38 +63,45 @@ while rrtInitializationCounter >= 0
             rrt_tree.bestNodeIdx = newNodeIdx;
         end
         rrt_tree.iterationCounter = rrt_tree.iterationCounter + 1;
-        
-        % Plot tree
-        if params.showRRT
-            showRRTTree(newParent, newNode, rrtInitializationCounter, rrt_tree, 'initialize');
-        end
+        connectionRRT = [newParent.state(1:3).'; newNode.state(1:3).'];
+        figure(2)
+        set(gcf,'units','centimeters','position',[1,14,20,12])
+        plot3(connectionRRT(:,1), connectionRRT(:,2), connectionRRT(:,3),...
+             'LineStyle', '-', 'LineWidth', 1.5, 'Color', color(4,:),...
+             'Marker', 'o', ...
+             'MarkerFaceColor', color(3,:), 'MarkerEdgeColor', color(3,:))
+        hold on
+        title(['RRT-Tree of planning step ' num2str(rrtInitializationCounter)], ...
+               'Interpreter', 'Latex')
+        set(gca,'FontSize',14,'TickLabelInterpreter','latex')
+        axis equal
+        grid on
+        drawnow
     end
     %%%
     
     % Loop for RRT tree construction
     loopCounter = 0;
-    while ~(rrt_tree.bestGain > params.gainZero) || rrt_tree.iterationCounter < params.treeIterations
+    while ~(rrt_tree.bestGain > 0) || rrt_tree.iterationCounter < params.treeIterations
         % If maxIterations is reached, it means that rrt tree best gain stayed
-        % 0, so the exploration is (hopefully) over. Terminate also if
-        % the inmapped volume is below a certin percentage
-        if rrt_tree.iterationCounter > params.maxIterations || mapping_progress_vect(end,3) <= params.minVUnmapped
+        % 0, so the exploration is (hopefully) over
+        if (rrt_tree.iterationCounter > params.maxIterations)
             disp(['nbvPlanner -- Best gain still 0 after ' ...
                   num2str(params.maxIterations) ...
-                  ' iterations or unmapped volume is very small. Exploration terminated.']);
+                  ' iterations. Exploration terminated.']);
             % Exit the program here
             return;
         end
         % If we fail to add a new node to the tree for a certain number of 
         % iterations that depends on rrt_tree.iterationCounter, we should go
         % back to the previous pose and rebuild a tree from there
-        if loopCounter > 100 * (rrt_tree.iterationCounter + 1)
+        if loopCounter > 1000 * (rrt_tree.iterationCounter + 1)
             disp(['nbvPlanner -- Exceeding maximum failed iterations during tree' ...
                   'construction. Return to previous point!'])
             %%% RRT getPathBackToPrevious function %%%
-            backtoPosePrev = true;
+            
             % Exit the nbv function here
-            % return
-            break;
+            return;
         end
     
         %%% RRT iterate function %%%
@@ -127,7 +133,6 @@ while rrtInitializationCounter >= 0
         % we must go out of the function
         collison_free_flag = checkCollisionAlongPath(occMap, origin, direction, params);
         if ~collison_free_flag
-            loopCounter = loopCounter + 1;
             continue;
             %return;
         end
@@ -149,67 +154,72 @@ while rrtInitializationCounter >= 0
         end
         rrt_tree.iterationCounter = rrt_tree.iterationCounter + 1;
         
-        % Plot tree
-        if params.showRRT
-            showRRTTree(newParent, newNode, rrtInitializationCounter, rrt_tree, 'iterate');
-        end
-        disp(['Iteration ' num2str(rrt_tree.iterationCounter)])
+        connectionRRT = [newParent.state(1:3).'; newNode.state(1:3).'];
+        figure(2)
+        set(gcf,'units','centimeters','position',[1,14,20, 12])
+        plot3(connectionRRT(:,1), connectionRRT(:,2), connectionRRT(:,3),...
+            'LineStyle', '-', 'LineWidth', 1.5, 'Color', color(1,:),...
+            'Marker', 'o', ...
+            'MarkerFaceColor', color(3,:), 'MarkerEdgeColor', color(3,:))
+        hold on
+        title(['RRT-Tree of planning step ' num2str(rrtInitializationCounter)], ...
+               'Interpreter', 'Latex')
+        set(gca,'FontSize',14,'TickLabelInterpreter','latex')
+        axis equal
+        grid on
+        drawnow
+        
+        disp(['Iteration ' num2str(loopCounter)])
         disp(['Best node index is ' num2str(rrt_tree.bestNodeIdx)...
               ' with gain ' num2str(rrt_tree.bestGain)])
         %%%
-
         loopCounter = loopCounter + 1;
     end
     
-    % Go back to previous pose
-    if backtoPosePrev
-        backtoPosePrev = false;
-        poseRef = posePrev;
-        % Publish pose reference message and wait for the drone to move
-        gazeboMoveDroneSampled(pubTrajectory, pose, poseRef, params);
-        % Decode pose messages to get pose of the drone in the world frame
-        pose = gazeboGetPose(subPose, poseRef);
-        pose_vect = [pose_vect; pose.'];
-        continue;
-    end
-
-    %%% RRT extractBestBranch function %%%
+    %%% RRT extractBaseBranch function %%%
     rrt_tree = rrt_tree.extractBestBranch();
     
     % Move to the new pose by executing the first edge of the best branch
     posePrev = pose;
     poseRef = rrt_tree.bestEdgeState;
-    % Publish pose reference message and wait for the drone to move
-    gazeboMoveDroneSampled(pubTrajectory, pose, poseRef, params);
+    % Publish pose reference message and wait for the drone to move 
+    gazeboMoveDrone(pubTrajectory, poseRef, params)
     % Decode pose messages to get pose of the drone in the world frame
     pose = gazeboGetPose(subPose, poseRef);
-    pose_vect = [pose_vect; pose.'];
+    
+    for nodeInBestBranchIdx = 1:size(rrt_tree.bestBranchStates, 1)-1
+        state = rrt_tree.bestBranchStates(nodeInBestBranchIdx, :).';
+        state_next = rrt_tree.bestBranchStates(nodeInBestBranchIdx + 1, :).';
+        connectionRRT = [state(1:3).'; state_next(1:3).'];
 
-    % Show best branch
-    if params.showRRT
-        showRRTTree(newParent, newNode, rrtInitializationCounter, rrt_tree, 'best');
+        figure(2)
+        set(gcf,'units','centimeters','position',[1,14,20,12])
+        plot3(connectionRRT(:,1), connectionRRT(:,2), connectionRRT(:,3),...
+              'LineStyle', '-', 'LineWidth', 1.5, 'Color', color(2,:),...
+              'Marker', 'o',...
+              'MarkerFaceColor', color(3,:), 'MarkerEdgeColor', color(3,:))
+        hold on
+        title(['RRT-Tree of planning step ' num2str(rrtInitializationCounter)], ...
+               'Interpreter', 'Latex')
+        set(gca,'FontSize',14,'TickLabelInterpreter','latex')
+        axis equal
+        grid on
+        drawnow
     end
-
+    hold off
+ 
     % Get scan of visible environment from Gazebo camera
     PointsC = gazeboGetCameraPointsFromDepth(subDepth, params, 'depth');
 
-    % Add visible pointcloud in camera coordinates to the occupancy map
+    % Add visible pointcloud in camera coordinates to the occupancy map 
     addPointsToMap(occMap, pose, PointsC, params);
-
+    
     % Plot explored map
     if params.showMap
         showExploredMap(occMap, pose, posePrev, PointsC, params);
     end
-    
-    % Mapping progress
-    mapping_progress_vect = [mapping_progress_vect; mappingProgress(occMap, voxels)];
-    elapsed_time = toc;
-    time_vect = [time_vect; elapsed_time];
-    % Plot progress
-    if params.showProgress
-        showMapProgress(time_vect(end-1:end), mapping_progress_vect(end-1:end,:));
-    end
-    disp(['Unmapped (%): ', num2str(mapping_progress_vect(end,3))]);
-
-    % Back to top to start new plan
+% Back to top to start new plan
 end
+
+% Shutdown ROS node
+rosshutdown

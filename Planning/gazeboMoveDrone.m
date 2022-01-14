@@ -1,4 +1,5 @@
-function gazeboMoveDrone(pubTrajectory, poseRef)
+function gazeboMoveDrone(pubTrajectory, poseRef, params)
+    % Construct pose reference message
     poseRefQuat = poseEul2Quat(poseRef);
     pose_ref_msg = rosmessage(pubTrajectory);
     pose_ref_msg.Header.Stamp = rostime('now','DataFormat','struct');
@@ -13,8 +14,8 @@ function gazeboMoveDrone(pubTrajectory, poseRef)
     pose_ref_msg.Points.Transforms.Rotation.W = poseRefQuat(4);
     pose_ref_msg.Points.Velocities = struct([]);
     pose_ref_msg.Points.Accelerations = struct([]);
-    pose_ref_msg.Points.TimeFromStart = rosduration (0,'DataFormat','struct');
-
+    pose_ref_msg.Points.TimeFromStart = rosduration(0,'DataFormat','struct');
+    % Send messsage
     send(pubTrajectory, pose_ref_msg)
-    pause(5);
+    pause(params.moveDelay);
 end

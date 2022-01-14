@@ -11,7 +11,7 @@ numRays = 10;
 angles = linspace(-pi/2,pi/2,numRays);
 directions = [cos(angles); sin(angles); zeros(1,numRays)]';
 sensorPose = [55 40 1 1 0 0 0];
-maxrange = 15;
+maxrange = 150;
 % Directions do not need to have a norm of 1
 [intersectionPts, isOccupied] = rayIntersection(map3D,sensorPose,122*directions,maxrange);
 % Elements of isOccupied are:

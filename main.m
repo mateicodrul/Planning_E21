@@ -1,43 +1,52 @@
-% Load files, functions and variables
+% Set up simulation
 setupSim;
 
-% Publish pose reference message and wait for the drone to move 
-send(pubTrajectory, pose_ref_msg)
-pause(5);
+% Start timer
+tic
+
+% Publish intitial pose reference message and wait for the drone to move
+% Ensure that the camera is looking toward the inner part of the box where 
+% the object lies
 % Decode pose messages to get initial pose of the drone in the world frame
-pose_msg = subPose.LatestMessage;
-poseQuat = [pose_msg.Position.X, pose_msg.Position.Y, pose_msg.Position.Z,...
-             pose_msg.Orientation.W, pose_msg.Orientation.X, pose_msg.Orientation.Y, pose_msg.Orientation.Z].';
-pose = poseQuat2Eul(poseQuat);
-% Pose with orientation part in quaternion form
-poseQuat = poseEul2Quat(pose);
+pose = gazeboGetPoseInit(subPose);
+posePrev = pose;
+poseRef = [0.5 0.5 1 0 0 pi/4].';
+gazeboMoveDroneSampled(pubTrajectory, pose, poseRef, params);
+% Decode pose messages to get pose of the drone in the world frame
+pose = gazeboGetPose(subPose, poseRef);
+pose_vect = [pose_vect; pose.'];
 
-% Get scan in base frame of visible environment from Gazebo camera
-PointsB = gazeboGetCameraPoints(subPointcloud, params);
+% Get scan of visible environment from Gazebo camera
+PointsC = gazeboGetCameraPointsFromDepth(subDepth, params, 'depth');
 
-% Add visible pointcloud in body coordinates to the occupancy map. Return
-% if there are no points to be added
-if ~size(PointsB, 2)
-    disp('No visible points to be added to the voxel map');
-    close all;
-    return;
+% Add visible pointcloud in camera coordinates to the occupancy map 
+addPointsToMap(occMap, pose, PointsC, params);
+
+% Optionally, set zero occupancy within box around start pose. This box has 
+% a size that is a multiple of the size of the collsion box
+setOccupancyBox(occMap, pose, params, 0, 2)
+
+% Plot explored map
+if params.showMap
+    showExploredMap(occMap, pose, pose, PointsC, params);
 end
-insertPointCloud(occMap, poseQuat, PointsB, params.camMaxRange + 1/params.mapResolution);
+%showOccupancy(occMap, pose, params, 1)
 
-% Set all the voxels within the sensor range to free if no obstacles exist
-% along the corresponding rays
-% Points_uf = findUnmappedFree(occMap, pose, params);
-% setOccupancy(occMap, Points_uf, 0);
+% Progress
+mapping_progress_vect = [mapping_progress_vect; mappingProgress(occMap, voxels)];
+elapsed_time = toc;
+time_vect = [time_vect; elapsed_time]; 
+% Plot progress
+if params.showProgress
+    showMapProgress(time_vect, mapping_progress_vect);
+end
 
-% Set zero occupancy within box around start pose
-epsilon = 1e-3;
-disc_step_box = params.boundingBox ./ ceil((params.boundingBox + epsilon) * params.mapResolution);
-[disc_grid_box_X, disc_grid_box_Y, disc_grid_box_Z] = meshgrid(...
-            -params.boundingBox(1)/2 : disc_step_box(1) : params.boundingBox(1)/2, ...
-            -params.boundingBox(2)/2 : disc_step_box(2) : params.boundingBox(2)/2, ...
-            -params.boundingBox(3)/2 : disc_step_box(3) : params.boundingBox(3)/2);
-disc_points_box = [disc_grid_box_X(:) disc_grid_box_Y(:) disc_grid_box_Z(:)];
-disc_points_box = pose(1:3).' + disc_points_box;
-setOccupancy(occMap, disc_points_box, 0);
+%% NBV planner
+NBV
 
-%showExploredMap(PointsB, occMap, pose, pose)
+% Shutdown ROS node
+rosshutdown
+
+%% Save results
+save(['Logging/', logfile_name],'occMap','mapping_progress_vect','time_vect','pose_vect','params')
+
